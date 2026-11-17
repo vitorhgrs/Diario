@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diário escolar</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Diário">
+<meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#171716" media="(prefers-color-scheme: dark)">
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{--bg:#f6f5f1;--sf:#fff;--tx:#1d1d1b;--mu:#6b6a64;--ln:#dedcd5;--ac:#1f6f5c;--ac2:#e3f1ec;--bad:#b3261e;--on:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171716;--sf:#222220;--tx:#eeede8;--mu:#a3a199;--ln:#3a3935;--ac:#58c2a4;--ac2:#1f3a32;--bad:#f2a29c;--on:#08231b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#171716;--sf:#222220;--tx:#eeede8;--mu:#a3a199;--ln:#3a3935;--ac:#58c2a4;--ac2:#1f3a32;--bad:#f2a29c;--on:#08231b;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+#app{padding:12px;max-width:1100px;margin:0 auto}
+header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+h1{font-size:20px;margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+h2{margin:0 0 10px;font-size:18px}
+button{font:inherit;border:1px solid var(--ln);background:var(--sf);color:var(--tx);border-radius:10px;padding:9px 13px;cursor:pointer}
+button.pri{background:var(--ac);border-color:var(--ac);color:var(--on)}
+button.bad{color:var(--bad)}
+.row{display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap}.sp{flex:1}
+.col{display:flex;flex-direction:column;gap:8px}
+.mu{color:var(--mu);font-size:14px}
+.card{display:flex;flex-direction:column;align-items:flex-start;text-align:left;width:100%;margin-bottom:8px;padding:14px}
+.card span{color:var(--mu);font-size:14px}
+nav{display:flex;gap:6px;margin-bottom:10px}
+.tb{flex:1;padding:9px 4px}.tb.on{background:var(--ac2);border-color:var(--ac);font-weight:600}
+.gw{overflow:auto;max-height:calc(100dvh - 200px);border:1px solid var(--ln);border-radius:12px;background:var(--sf)}
+table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+th,td{border-bottom:1px solid var(--ln);border-right:1px solid var(--ln);padding:0;text-align:center;background:var(--sf)}
+th{position:sticky;top:0;z-index:2;padding:6px 8px;font-size:14px;min-width:84px}
+th small{display:block;color:var(--mu);font-weight:400}
+th:first-child,td:first-child{position:sticky;left:0;z-index:1;min-width:150px;max-width:190px;text-align:left}
+th:first-child{z-index:3}
+.ah,.nm{border:0;background:none;padding:6px 8px;font:inherit;text-align:inherit;width:100%;border-radius:0}
+.nm{padding:11px 10px}
+td input{width:100%;min-width:70px;border:0;background:transparent;color:inherit;font:inherit;font-size:16px;text-align:center;padding:11px 4px;border-radius:0}
+td input:focus{outline:2px solid var(--ac);outline-offset:-2px;background:var(--ac2)}
+.tot{font-weight:600;padding:11px 8px}
+dialog{border:1px solid var(--ln);border-radius:16px;background:var(--sf);color:var(--tx);width:min(92vw,420px);padding:18px}
+dialog::backdrop{background:#0008}
+label{display:block;margin-bottom:10px;font-size:14px;color:var(--mu)}
+label input,label textarea,label select{display:block;width:100%;margin-top:4px;padding:10px;font:inherit;font-size:16px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--tx)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 14px;border-radius:10px;font-size:14px;z-index:99}
+</style></head>
+<body><div id="app"></div><dialog id="dlg"></dialog><div id="toast" hidden></div>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<script>
+const $=s=>document.querySelector(s),KEY='diario-v1';
+let S=null,cur=null,tab=1,armed=false;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!Array.isArray(S.classes))S={classes:[]};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não foi possível salvar neste navegador')}};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const r2=n=>Math.round(n*100)/100;
+const fmt=n=>n==null||n===''?'':String(r2(n)).replace('.',',');
+const num=v=>{v=String(v).trim().replace(',','.');return v===''?null:Number(v)};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const C=()=>S.classes.find(c=>c.id===cur);
+const gr=(c,s,a)=>c.grades[s+'|'+a];
+const tsum=(c,s,t)=>r2(c.acts.filter(a=>a.t==t).reduce((x,a)=>x+(gr(c,s,a.id)||0),0));
+const tmax=(c,t)=>c.acts.filter(a=>a.t==t).reduce((x,a)=>x+a.max,0);
+const names=v=>v.split('\n').map(x=>x.replace(/^\s*\d+\s*[.)\-–]\s*/,'').trim()).filter(Boolean);
+function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,2600)}
+
+function render(){const c=cur&&C();if(!c){cur=null;return home()}clsView(c)}
+function home(){$('#app').innerHTML=`<header><h1>Diário escolar</h1></header>${S.classes.map(c=>`<button class="card" data-open="${c.id}"><b>${esc(c.name)}</b><span>${c.students.length} alunos · ${c.acts.length} atividades</span></button>`).join('')||'<p class="mu">Nenhuma turma ainda. Toque em “Nova turma” e cole a lista de alunos.</p>'}<div class="row"><button class="pri" data-act="newclass">+ Nova turma</button><span class="sp"></span><button data-act="backup">Backup</button><button data-act="restore">Restaurar</button></div><p class="mu">Os dados ficam salvos só neste aparelho. Faça um backup de vez em quando.</p>`}
+function clsView(c){
+ const T=[1,2,3].map(t=>`<button class="tb${tab==t?' on':''}" data-tab="${t}">${t}º tri</button>`).join('')+`<button class="tb${tab==4?' on':''}" data-tab="4">Anual</button>`;
+ let b;
+ if(tab<4){const as=c.acts.filter(a=>a.t==tab);
+  b=`<div class="row"><button class="pri" data-act="newact">+ Atividade</button><span class="mu">${as.length?'Toque no nome da atividade para editar':'Crie a primeira atividade deste trimestre'}</span></div><div class="gw"><table><thead><tr><th>Aluno</th>${as.map(a=>`<th><button class="ah" data-edact="${a.id}">${esc(a.name)}<small>de ${fmt(a.max)}</small></button></th>`).join('')}<th>Total<small>de ${fmt(tmax(c,tab))}</small></th></tr></thead><tbody>${c.students.map((s,i)=>`<tr><td><button class="nm" data-st="${s.id}">${i+1}. ${esc(s.name)}</button></td>${as.map(a=>`<td><input inputmode="decimal" autocomplete="off" data-s="${s.id}" data-a="${a.id}" value="${fmt(gr(c,s.id,a.id))}"></td>`).join('')}<td class="tot" id="t-${s.id}">${fmt(tsum(c,s.id,tab))}</td></tr>`).join('')}</tbody></table></div>`;
+ }else{
+  b=`<div class="gw"><table><thead><tr><th>Aluno</th>${[1,2,3].map(t=>`<th>${t}º tri<small>de ${fmt(tmax(c,t))}</small></th>`).join('')}<th>Total<small>de ${fmt(tmax(c,1)+tmax(c,2)+tmax(c,3))}</small></th></tr></thead><tbody>${c.students.map((s,i)=>{const v=[1,2,3].map(t=>tsum(c,s.id,t));return `<tr><td class="nm">${i+1}. ${esc(s.name)}</td>${v.map(x=>`<td class="tot">${fmt(x)}</td>`).join('')}<td class="tot">${fmt(r2(v[0]+v[1]+v[2]))}</td></tr>`}).join('')}</tbody></table></div>`;
+ }
+ $('#app').innerHTML=`<header><button data-act="back">←</button><h1>${esc(c.name)}</h1><button data-act="editclass">Turma</button><button class="pri" data-act="export">Exportar</button></header><nav>${T}</nav>${b}`;
+}
+
+$('#app').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+ if(d.open){cur=d.open;tab=1;render()}
+ else if(d.tab){tab=+d.tab;render()}
+ else if(d.edact)actDlg(d.edact)
+ else if(d.st)stDlg(d.st)
+ else if(d.act)({newclass:()=>newclass(),back:()=>{cur=null;render()},backup:()=>backup(),restore:()=>$('#file').click(),editclass:()=>clsDlg(),export:()=>expDlg(),newact:()=>actDlg()})[d.act]()});
+$('#app').addEventListener('change',e=>{const i=e.target;if(!i.dataset.s)return;const c=C(),a=c.acts.find(x=>x.id==i.dataset.a),k=i.dataset.s+'|'+a.id,v=num(i.value);
+ if(v!==null&&(isNaN(v)||v<0||v>a.max)){toast('A nota deve ficar entre 0 e '+fmt(a.max));i.value=fmt(c.grades[k]);return}
+ if(v===null)delete c.grades[k];else c.grades[k]=v;
+ save();i.value=fmt(v);$('#t-'+i.dataset.s).textContent=fmt(tsum(c,i.dataset.s,tab))});
+$('#app').addEventListener('keydown',e=>{if(e.key!=='Enter'||!e.target.dataset.a)return;e.preventDefault();const n=[...document.querySelectorAll(`input[data-a="${e.target.dataset.a}"]`)],x=n[n.indexOf(e.target)+1];x?x.focus():e.target.blur()});
+
+function dlg(html,fn){armed=false;const d=$('#dlg');d.innerHTML=html;d.onclick=async e=>{const b=e.target.closest('[data-d]');if(!b)return;if(b.dataset.d==='x')return d.close();if(await fn(b.dataset.d,b)!==false)d.close()};d.showModal()}
+const btns=(ok,del)=>`<div class="row">${del?'<button class="bad" data-d="del">Excluir</button>':''}<span class="sp"></span><button data-d="x">Cancelar</button><button class="pri" data-d="ok">${ok}</button></div>`;
+const confirmDel=b=>{if(armed)return true;armed=true;b.textContent='Toque de novo para excluir';return false};
+
+function newclass(){dlg(`<h2>Nova turma</h2><label>Nome da turma<input id="f1" placeholder="Ex.: 1º ano A"></label><label>Alunos (um nome por linha)<textarea id="f2" rows="8" placeholder="Cole a lista aqui"></textarea></label>${btns('Criar')}`,()=>{const n=$('#f1').value.trim();if(!n){toast('Dê um nome à turma');return false}S.classes.push({id:uid(),name:n,students:names($('#f2').value).map(x=>({id:uid(),name:x})),acts:[],grades:{}});save();render()})}
+function clsDlg(){const c=C();dlg(`<h2>Turma</h2><label>Nome<input id="f1" value="${esc(c.name)}"></label><label>Adicionar alunos (um nome por linha)<textarea id="f2" rows="6"></textarea></label>${btns('Salvar',1)}`,(k,b)=>{if(k==='del'){if(!confirmDel(b))return false;S.classes=S.classes.filter(x=>x!==c);cur=null}else{c.name=$('#f1').value.trim()||c.name;const h=new Set(c.students.map(s=>s.name));names($('#f2').value).forEach(n=>{if(!h.has(n)){h.add(n);c.students.push({id:uid(),name:n})}})}save();render()})}
+function stDlg(id){const c=C(),s=c.students.find(x=>x.id==id);dlg(`<h2>Aluno</h2><label>Nome<input id="f1" value="${esc(s.name)}"></label>${btns('Salvar',1)}`,(k,b)=>{if(k==='del'){if(!confirmDel(b))return false;c.students=c.students.filter(x=>x!==s);Object.keys(c.grades).forEach(q=>{if(q.startsWith(s.id+'|'))delete c.grades[q]})}else s.name=$('#f1').value.trim()||s.name;save();render()})}
+function actDlg(id){const c=C(),a=id?c.acts.find(x=>x.id==id):null,t=a?a.t:(tab<4?tab:1);
+ dlg(`<h2>${a?'Atividade':'Nova atividade'}</h2><label>Nome<input id="f1" value="${a?esc(a.name):''}" placeholder="Ex.: Prova 1"></label><label>Pontuação máxima<input id="f2" inputmode="decimal" value="${a?fmt(a.max):''}" placeholder="Ex.: 10"></label><label>Trimestre<select id="f3">${[1,2,3].map(x=>`<option value="${x}"${x==t?' selected':''}>${x}º trimestre</option>`).join('')}</select></label>${btns('Salvar',a)}`,(k,b)=>{
+  if(k==='del'){if(!confirmDel(b))return false;c.acts=c.acts.filter(x=>x!==a);Object.keys(c.grades).forEach(q=>{if(q.endsWith('|'+a.id))delete c.grades[q]})}
+  else{const n=$('#f1').value.trim(),m=num($('#f2').value),nt=+$('#f3').value;if(!n||!(m>0)){toast('Informe o nome e a pontuação máxima');return false}
+   if(a){a.name=n;a.max=m;a.t=nt}else c.acts.push({id:uid(),name:n,max:m,t:nt});tab=nt}
+  save();render()})}
+
+const fname=c=>c.name.replace(/[\\\/:*?"<>|]/g,'-')+' - notas';
+function rows(c,t){
+ if(t==='a')return [['Aluno',...[1,2,3].map(x=>`${x}º trimestre (de ${fmt(tmax(c,x))})`),'Total anual'],...c.students.map(s=>{const v=[1,2,3].map(x=>tsum(c,s.id,x));return [s.name,...v,r2(v[0]+v[1]+v[2])]})];
+ const as=c.acts.filter(a=>a.t==t);
+ return [['Aluno',...as.map(a=>`${a.name} (de ${fmt(a.max)})`),`Total (de ${fmt(tmax(c,t))})`],...c.students.map(s=>[s.name,...as.map(a=>gr(c,s.id,a.id)??''),tsum(c,s.id,t)])];
+}
+const secs=c=>[1,2,3,'a'].filter(t=>t==='a'||c.acts.some(a=>a.t==t));
+const MIME={xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',pdf:'application/pdf',json:'application/json'};
+async function dl(name,data){const f=new File([data],name,{type:MIME[name.split('.').pop()]||'application/octet-stream'});
+ try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){if(e&&e.name==='AbortError')return}
+ const u=URL.createObjectURL(f),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000)}
+function expDlg(){dlg(`<h2>Exportar ${esc(C().name)}</h2><p class="mu">A planilha .xlsx abre no Excel e também no Google Planilhas.</p><div class="col"><button class="pri" data-d="xl">Planilha (.xlsx)</button><button class="pri" data-d="pdf">PDF</button><button data-d="x">Cancelar</button></div>`,k=>{k==='xl'?toXlsx():toPdf()})}
+function toXlsx(){if(!window.XLSX)return toast('A biblioteca de planilhas não carregou');const c=C(),wb=XLSX.utils.book_new();
+ secs(c).forEach(t=>{const ws=XLSX.utils.aoa_to_sheet(rows(c,t));ws['!cols']=[{wch:30},...Array(40).fill({wch:16})];XLSX.utils.book_append_sheet(wb,ws,t==='a'?'Anual':t+'º tri')});
+ dl(fname(c)+'.xlsx',new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})]))}
+function toPdf(){if(!window.jspdf)return toast('A biblioteca de PDF não carregou');const c=C(),d=new window.jspdf.jsPDF({orientation:'landscape'});
+ secs(c).forEach((t,i)=>{if(i)d.addPage();const r=rows(c,t);d.setFontSize(14);d.text(`${c.name} · ${t==='a'?'Notas anuais':t+'º trimestre'}`,14,15);d.autoTable({head:[r[0]],body:r.slice(1).map(x=>x.map((v,j)=>j?fmt(v):v)),startY:21,styles:{fontSize:9},headStyles:{fillColor:[31,111,92]}})});
+ dl(fname(c)+'.pdf',d.output('blob'))}
+function backup(){dl('diario-backup.json',new Blob([JSON.stringify(S)],{type:'application/json'}))}
+$('#file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const j=JSON.parse(await f.text());if(!Array.isArray(j.classes))throw 0;dlg(`<h2>Restaurar backup</h2><p>Isto substitui todos os dados atuais (${j.classes.length} turma(s) no arquivo).</p>${btns('Restaurar')}`,()=>{S=j;save();cur=null;render()})}catch(x){toast('Arquivo de backup inválido')}};
+render();
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+</script></body></html>
